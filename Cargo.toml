@@ -1,0 +1,21 @@
+[package]
+name = "bp35c0"
+description = "WIP: Rust Binding for ROHM BP35C0 Wi-SUN Module"
+authors = ["Natsuki Ikeguchi <me@s6n.jp>"]
+license = "MIT"
+readme = "README.md"
+repository = "https://github.com/siketyan/bp35c0-rs.git"
+version = "0.0.0"
+edition = "2021"
+
+[dependencies]
+bstr = "1.9"
+byteorder = "1.5"
+hex = "0.4.3"
+mac_address = "1.1"
+serialport = "4.3"
+tracing = "0.1.40"
+
+[workspace]
+resolver = "2"
+members = [".", "example"]
