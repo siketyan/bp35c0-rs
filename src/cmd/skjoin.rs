@@ -4,7 +4,7 @@ use bstr::BString;
 
 use crate::{Bp35c0, Result};
 use crate::cmd::Encode;
-use crate::event::{Event, EVENT, EventBody, RawEvent};
+use crate::event::EventBody;
 use crate::payload::Payload;
 use crate::utils::u16_to_hex_bytes;
 
@@ -36,27 +36,10 @@ impl Bp35c0 {
     }
 
     pub fn join(&mut self, ip_addr: Ipv6Addr) -> Result<()> {
-        let mut buf = Vec::<Payload>::new();
-
         unsafe {
             self.join_nowait(ip_addr)?;
-
-            loop {
-                let payload = self.receive_payload()?;
-                if payload.name == EVENT {
-                    let event = Event::from(&RawEvent::from(&payload));
-                    if let EventBody::PanaConnected = event.body {
-                        self.wait_for_ok()?;
-                        break;
-                    }
-                }
-
-                buf.push(payload);
-            }
+            self.wait_for_event(|e| matches!(e.body, EventBody::PanaConnected))?;
+            self.wait_for_ok()
         }
-
-        buf.into_iter().for_each(|p| self.buf.push_back(p));
-
-        Ok(())
     }
 }

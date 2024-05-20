@@ -7,6 +7,7 @@ use serialport::SerialPort;
 use tracing::debug;
 
 use crate::cmd::*;
+use crate::event::{Event, EVENT, RawEvent};
 use crate::payload::Payload;
 
 pub mod cmd;
@@ -25,6 +26,12 @@ pub struct Bp35c0<Port = Box<dyn SerialPort>> {
     port: Port,
     reader: BufReader<Port>,
     buf: VecDeque<Payload>,
+}
+
+pub enum WaitMap<T> {
+    Consume,
+    Continue(Payload),
+    Finish(T),
 }
 
 impl Bp35c0 {
@@ -109,20 +116,60 @@ impl Bp35c0 {
         self.send_payload(&input.encode())
     }
 
-    pub unsafe fn wait_until_payload(&mut self, name: &[u8]) -> Result<Payload> {
-        loop {
-            let payload = self.receive_payload_unbuffered()?;
-            if payload.name == name {
-                return Ok(payload);
-            } else {
-                self.buf.push_back(payload);
-                continue;
+    pub unsafe fn wait_map<F, T>(&mut self, mut f: F) -> Result<T>
+    where
+        F: FnMut(Payload) -> WaitMap<T>,
+    {
+        let mut buf = Vec::<Payload>::new();
+
+        let value = loop {
+            match f(self.receive_payload()?) {
+                WaitMap::Consume => {}
+                WaitMap::Continue(payload) => {
+                    buf.push(payload);
+                }
+                WaitMap::Finish(value) => {
+                    break value;
+                }
             }
-        }
+        };
+
+        buf.into_iter().for_each(|p| self.buf.push_back(p));
+
+        return Ok(value);
+    }
+
+    pub unsafe fn wait_for<F>(&mut self, criteria: F) -> Result<Payload>
+    where
+        F: Fn(&Payload) -> bool,
+    {
+        self.wait_map(|p| {
+            if criteria(&p) {
+                WaitMap::Finish(p)
+            } else {
+                WaitMap::Continue(p)
+            }
+        })
+    }
+
+    pub unsafe fn wait_for_event<F>(&mut self, criteria: F) -> Result<Event>
+    where
+        F: Fn(&Event) -> bool,
+    {
+        self.wait_map(|p| {
+            if p.name == EVENT {
+                let event = Event::from(&RawEvent::from(&p));
+                if criteria(&event) {
+                    return WaitMap::Finish(event);
+                }
+            }
+
+            WaitMap::Continue(p)
+        })
     }
 
     pub unsafe fn wait_for_ok(&mut self) -> Result<()> {
-        self.wait_until_payload(OK)?;
+        self.wait_for(|p| p.name == OK)?;
         Ok(())
     }
 
@@ -130,7 +177,7 @@ impl Bp35c0 {
     where
         R: Response,
     {
-        let payload = self.wait_until_payload(R::NAME)?;
+        let payload = self.wait_for(|p| p.name == R::NAME)?;
         let response = R::decode(&payload);
         self.wait_for_ok()?;
         Ok(response)

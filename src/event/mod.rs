@@ -8,9 +8,10 @@ pub mod epandesc;
 
 pub const EVENT: &[u8] = b"EVENT";
 
+#[allow(dead_code)]
 #[repr(u8)]
 #[derive(Copy, Clone, Debug)]
-pub enum EventType {
+enum EventType {
     NSReceived = 0x01,
     NAReceived = 0x02,
     EchoRequest = 0x05,
@@ -95,7 +96,7 @@ pub enum EventBody {
 
 impl From<&RawEvent> for EventBody {
     fn from(value: &RawEvent) -> Self {
-        match unsafe { std::mem::transmute(value.num) } {
+        match unsafe { std::mem::transmute::<u8, EventType>(value.num) } {
             EventType::NSReceived => Self::NSReceived,
             EventType::NAReceived => Self::NAReceived,
             EventType::EchoRequest => Self::EchoRequest,
